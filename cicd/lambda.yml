@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09" 
+
+Description: "AWS Academy Tara - Lambda"
+
+Parameters:
+  S3BucketDataName:
+    Type: String
+  S3BucketScriptsName:
+    Type: String
+  Owner:
+    Type: String
+  GlueJobName:
+    Type: String
+  LambdaDatalakeName:
+    Type: String
+  LambdaDatalakeRoleName:
+    Type: String
+  LambdaDatalakeUploadUNIXT:
+    Type: String
+
+Resources:
+  LambdaDatalakeExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Ref LambdaDatalakeRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:ListBucket"
+                Resource:
+                  - "arn:aws:s3:::tara-academy-data"
+                  - "arn:aws:s3:::tara-academy-data/*"
+              - Effect: Allow
+                Action:
+                  - "redshift:CreateCluster"
+                  - "redshift:CreateSchema"
+                  - "redshift:CreateTable"
+                  - "redshift:Copy"
+                Resource:
+                  - "arn:aws:redshift:eu-central-1:456582705970:namespace:db03ac74-680a-45c3-bd8e-53cbec384c5a"
+  
+  LambdaDatalakeFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Ref LambdaDatalakeName
+      Description: Create schema in Redshift using S3 bucket data
+      Runtime: python3.8
+      Role: !GetAtt LambdaDatalakeExecutionRole.Arn
+      Handler: lambda_datalake.lambda_handler
+      Layers:
+        - arn:aws:lambda:eu-central-1:336392948345:layer:AWSSDKPandas-Python38:9
+        - arn:aws:lambda:eu-central-1:898466741470:layer:psycopg2-py38:1
+        - arn:aws:lambda:eu-central-1:456582705970:layer:Data-Preprocessing:1
+      Code:
+        S3Bucket: !Ref S3BucketScriptsName
+        S3Key: !Sub "lambda/datalake/${LambdaDatalakeUploadUNIXT}/lambda_datalake.zip"
+      PackageType: Zip
+      MemorySize: 1024
+      Timeout: 900

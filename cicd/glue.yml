@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09" 
+
+Description: "AWS Academy Tara - Glue Job"
+
+Parameters:
+  S3BucketDataName:
+    Type: String
+  S3BucketScriptsName:
+    Type: String
+  S3AdminDataName:
+    Type: String
+  GlueJobName:
+    Type: String
+  GlueJobAnalyticsName:
+    Type: String
+  GlueJobRoleName:
+    Type: String
+  GlueAdminDatalakeName:
+    Type: String
+  GlueAdminDatalakeTableUsers:
+    Type: String
+  GlueAdminDatalakeTableUserFollowers:
+    Type: String 
+  GlueAdminDatalakeTableTweets:
+    Type: String
+
+Resources:
+  GlueJobRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Ref GlueJobRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: glue.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: GlueJobPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:putObject"
+                  - "s3:GetObject"
+                  - "s3:ListBucket"
+                  - "glue:GetTable"
+                  - "glue:GetPartitions"
+                  - "redshift:CreateCluster"
+                  - "redshift:CreateSchema"
+                  - "redshift:CreateTable"
+                  - "redshift:Copy"
+                Resource:
+                  - "arn:aws:glue:eu-central-1:456582705970:catalog"
+                  - "arn:aws:glue:eu-central-1:456582705970:database/admin-academy-twitter"
+                  - "arn:aws:glue:eu-central-1:456582705970:table/admin-academy-twitter/users"
+                  - "arn:aws:glue:eu-central-1:456582705970:table/admin-academy-twitter/user_followers"
+                  - "arn:aws:glue:eu-central-1:456582705970:table/admin-academy-twitter/tweets"
+                  - "arn:aws:s3:::admin-academy-data"
+                  - "arn:aws:s3:::admin-academy-data/*"
+                  - "arn:aws:s3:::tara-academy-data"
+                  - "arn:aws:s3:::tara-academy-data/*"
+                  - "arn:aws:s3:::tara-academy-scripts"
+                  - "arn:aws:s3:::tara-academy-scripts/*"
+                  - "arn:aws:s3:::tara-academy-scripts/glue/glueetl.py"
+                  - "arn:aws:s3:::tara-academy-scripts/glue/gluanalytics.py"
+                  - "arn:aws:redshift:eu-central-1:456582705970:namespace:db03ac74-680a-45c3-bd8e-53cbec384c5a"
+
+
+  GlueDatalakeJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref GlueJobName
+      Role: !Ref GlueJobRole
+      GlueVersion: "4.0"
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub "s3://${S3BucketScriptsName}/glue/glueetl.py"
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      MaxRetries: 0
+      Timeout: 480
+      DefaultArguments:
+        "--S3BucketData": !Ref S3BucketDataName
+        "--S3AdminData": !Ref S3AdminDataName
+        "--AdminCatalog": !Ref GlueAdminDatalakeName
+        "--AdminUsersTable": !Sub ${GlueAdminDatalakeTableUsers}
+        "--AdminUserFollowers": !Sub ${GlueAdminDatalakeTableUserFollowers}
+        "--AdminTweets": !Sub ${GlueAdminDatalakeTableTweets}
+        "--TempDir": "s3://tara-academy-scripts/glue/"
+
+
+  GlueAnalyticsJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref GlueJobAnalyticsName
+      Role: !Ref GlueJobRole
+      GlueVersion: "3.0"
+      Command:
+        Name: pythonshell
+        ScriptLocation: !Sub "s3://${S3BucketScriptsName}/glue/glueanalytics.py"
+        PythonVersion: "3.9"
+      ExecutionProperty:
+        MaxConcurrentRuns: 2
+      MaxRetries: 0
+      Timeout: 480

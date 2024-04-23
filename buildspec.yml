@@ -1,0 +1,157 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Start Initialization"
+      
+      # User Information
+      - export USER=tara
+      - export Owner=${USER}@iolap.com
+
+      # S3 Stack
+      - export S3StackName=${USER}-academy-s3-stack
+      - export S3StackTemplate=cicd/s3.yml
+      # S3 Objects
+      - export S3BucketData=${USER}-academy-data
+      - export S3BucketScripts=${USER}-academy-scripts
+      - export S3AdminData=admin-academy-data
+
+      # Glue Stack
+      - export GlueStackName=${USER}-academy-glue-stack
+      - export GlueStackTemplate=cicd/glue.yml
+      - export GlueJobName=${USER}-academy-glue-datalake-job
+      - export GlueJobAnalyticsName=${USER}-academy-glue-analytics-job
+      - export GlueJobRoleName=${USER}-academy-glue-role
+      - export GlueAdminDatalakeName=admin-academy-twitter
+      - export GlueAdminDatalakeTableUsers=users
+      - export GlueAdminDatalakeTableUserFollowers=user_followers
+      - export GlueAdminDatalakeTableTweets=tweets
+
+      # Lambda Stack
+      - export LambdaStackName=${USER}-academy-lambda-stack
+      - export LambdaStackTemplate=cicd/lambda.yml
+      - export LambdaDatalakeName=${USER}-academy-lambda-datalake
+      - export LambdaDatalakeRoleName=${USER}-academy-lambda-datalake-role
+      - export LambdaDatalakeUploadUNIXT=$(date +%s)
+
+      # State Machine Stack
+      - export StateMachineStackName=${USER}-academy-statemachine-stack
+      - export StateMachineStackTemplate=cicd/statemachine.yml
+
+      - export StateMachineName=${USER}-academy-statemachine
+      - export StateMachineRoleName=${USER}-academy-statemachine-role
+
+      - export StateMachineTriggerRoleName=${USER}-academy-statemachine-trigger-role
+  
+
+      # Zip lambda file in datalake local folder
+      - >
+        zip -r9j \
+          resources/lambda/datalake/lambda_datalake.zip \
+          resources/lambda/datalake/lambda_datalake.py
+
+      - echo "End Initialization"
+
+  build:
+    commands:
+      - echo "Start Build"
+
+      #===================== S3 Stack =====================
+      - echo "===================== S3 Start Deployment ========================="
+
+      - >
+        aws cloudformation deploy \
+          --stack-name ${S3StackName} \
+          --template-file ${S3StackTemplate} \
+          --s3-prefix cicd \
+          --parameter-overrides \
+            S3BucketDataName=${S3BucketData} \
+            S3BucketScriptsName=${S3BucketScripts} \
+            Owner=${Owner} \
+          --no-fail-on-empty-changeset \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --tags Owner=${Owner}
+      
+      - echo "===================== S3 Deployment Complete ======================="
+
+      - echo "===================== Send glueetl.py to Scripts Bucket ========================="
+      - >
+        aws s3 sync resources/glue/ s3://${S3BucketScripts}/glue/
+
+
+      - echo "===================== Send lambda_datalake.zip to Scripts Bucket ========================="
+      - >
+        aws s3 cp resources/lambda/datalake/lambda_datalake.zip s3://${S3BucketScripts}/lambda/datalake/${LambdaDatalakeUploadUNIXT}/
+
+
+      #===================== Glue Stack =====================
+      - echo "===================== Glue Start Deployment ========================"
+
+      - >
+        aws cloudformation deploy \
+          --stack-name ${GlueStackName} \
+          --template-file ${GlueStackTemplate} \
+          --s3-prefix cicd \
+          --parameter-overrides \
+            S3BucketDataName=${S3BucketData} \
+            S3BucketScriptsName=${S3BucketScripts} \
+            S3AdminDataName=${S3AdminData} \
+            GlueJobName=${GlueJobName} \
+            GlueJobAnalyticsName=${GlueJobAnalyticsName} \
+            GlueJobRoleName=${GlueJobRoleName} \
+            GlueAdminDatalakeName=${GlueAdminDatalakeName} \
+            GlueAdminDatalakeTableUsers=${GlueAdminDatalakeTableUsers} \
+            GlueAdminDatalakeTableUserFollowers=${GlueAdminDatalakeTableUserFollowers} \
+            GlueAdminDatalakeTableTweets=${GlueAdminDatalakeTableTweets} \
+          --no-fail-on-empty-changeset \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --tags Owner=${Owner}
+
+      - echo "===================== Glue Deployment Complete ====================="
+
+      #===================== Lambda Stack =====================
+      - echo "===================== Lambda Start Deployment ========================"
+
+      - >
+        aws cloudformation deploy \
+          --stack-name ${LambdaStackName} \
+          --template-file ${LambdaStackTemplate} \
+          --s3-prefix cicd \
+          --parameter-overrides \
+            LambdaDatalakeName=${LambdaDatalakeName} \
+            LambdaDatalakeRoleName=${LambdaDatalakeRoleName} \
+            S3BucketDataName=${S3BucketData} \
+            S3BucketScriptsName=${S3BucketScripts} \
+            GlueJobName=${GlueJobName} \
+            LambdaDatalakeUploadUNIXT=${LambdaDatalakeUploadUNIXT} \
+            Owner=${Owner} \
+          --no-fail-on-empty-changeset \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --tags Owner=${Owner}
+
+      - echo "===================== Lambda Deployment Complete ====================="
+
+      #===================== Lambda Stack =====================
+      - echo "===================== State Machine Start Deployment ========================"
+
+      - >
+        aws cloudformation deploy \
+          --stack-name ${StateMachineStackName} \
+          --template-file ${StateMachineStackTemplate} \
+          --s3-prefix cicd \
+          --parameter-overrides \
+            StateMachineName=${StateMachineName} \
+            StateMachineRoleName=${StateMachineRoleName} \
+            StateMachineTriggerRoleName=${StateMachineTriggerRoleName} \
+            GlueJobName=${GlueJobName} \
+            GlueJobAnalyticsName=${GlueJobAnalyticsName} \
+            LambdaDatalakeName=${LambdaDatalakeName} \
+            Owner=${Owner} \
+          --no-fail-on-empty-changeset \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --tags Owner=${Owner}
+
+      - echo "===================== State Machine Deployment Complete ====================="
+      
+      - echo "End Build"   

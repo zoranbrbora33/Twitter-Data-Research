@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "AWS Academy Tara - S3 Buckets"
+
+Parameters:
+  S3BucketDataName:
+    Type: String
+  S3BucketScriptsName:
+    Type: String
+  Owner:
+    Type: String
+
+Resources:
+  S3DataBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref S3BucketDataName
+
+  S3ScriptsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref S3BucketScriptsName

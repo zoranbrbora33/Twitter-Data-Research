@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  StateMachineName:
+    Type: String
+  StateMachineRoleName:
+    Type: String
+  StateMachineTriggerRoleName:
+    Type: String
+  Owner:
+    Type: String
+  GlueJobName:
+    Type: String
+  LambdaDatalakeName:
+    Type: String
+  GlueJobAnalyticsName:
+    Type: String
+
+
+Resources:
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref StateMachineRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "states.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+
+  StateMachineTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref StateMachineTriggerRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "policy-${StateMachineTriggerRoleName}"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: states:*
+                Resource: !GetAtt AcademyStateMachine.Arn
+
+  AcademyStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Ref StateMachineName
+      RoleArn: !GetAtt StateMachineRole.Arn
+      DefinitionSubstitutions:
+        GlueJobName: !Ref GlueJobName
+      DefinitionString: |-
+        {
+          "Comment": "A description of my state machine",
+          "StartAt": "Glue StartJobRun",
+          "States": {
+            "Glue StartJobRun": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun",
+              "Parameters": {
+                "JobName": "tara-academy-glue-datalake-job"
+              },
+              "Next": "Lambda Invoke"
+            },
+            "Lambda Invoke": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "arn:aws:lambda:eu-central-1:456582705970:function:tara-academy-lambda-datalake:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Glue StartJobRun (1)"
+            },
+            "Glue StartJobRun (1)": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun",
+              "Parameters": {
+                "JobName": "tara-academy-glue-analytics-job"
+              },
+              "End": true
+            }
+          }
+        }
+
+  AcademyStateMachineTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      State: DISABLED
+      Description: Call State Machine on Schedule
+      RoleArn: !GetAtt StateMachineTriggerRole.Arn
+      ScheduleExpression: "cron(0 6 * * ? *)"
+      Targets:
+        - Arn: !GetAtt AcademyStateMachine.Arn
+          Id: AcademyStateMachine
+          RoleArn: !GetAtt StateMachineTriggerRole.Arn
