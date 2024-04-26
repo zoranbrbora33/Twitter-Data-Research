@@ -1,8 +1,4 @@
-# iOLAP Academy 2023
-
-## Final task
-
-### Task Description:
+Description:
 
 Client: Travel agency
 
